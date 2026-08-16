@@ -23,8 +23,9 @@ Each solver exposes a `run(seed, ...)` that executes its complete optimisation
 loop, so what is benchmarked here is exactly what runs when a solver is
 invoked on its own.
 
-Running the full 1000 trials per method takes a few hours. Pass a smaller
-`num_trials` for a quick look.
+Running the full 1000 trials per method takes the better part of a day: about
+45 seconds per seed across the five methods, over half of it the TPE solver
+building its surrogate. Pass a smaller `num_trials` for a quick look.
 """
 
 import pathlib

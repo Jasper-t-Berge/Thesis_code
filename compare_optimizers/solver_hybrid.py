@@ -51,7 +51,6 @@ sparsely, since the constraint count grows roughly as N^2.
 
 import pathlib
 import sys
-import time
 
 # Put the project root and this folder on the import path, so `hysteron` and
 # the sibling modules resolve however this file is launched.
@@ -71,10 +70,13 @@ from hysteron import (                                         # noqa: E402
     convert_number_to_state,
     cost_function_system,
     random_parameter_vector,
+    set_RNG_seed,
     straighten_parameters,
 )
 from hysteron.optimize import (                                # noqa: E402
-    POPSIZE,
+    # POPSIZE is re-exported deliberately: `run_comparison` and `run_scaling`
+    # read it off this module to convert generations into cost evaluations.
+    POPSIZE,                                                   # noqa: F401
     SIGMA0,
     SIGMA_FLOOR,
     STAGNATION_LIMIT,
@@ -409,10 +411,7 @@ def run(seed, max_fevals=None, num_sim=1, sigma0=SIGMA0,
     """
     if max_fevals is None:
         max_fevals = problem.EVAL_BUDGET
-    if seed == -1:
-        seed = int(time.time() * 10000) % 100000000
-        print('seed:', seed, "\n")
-    np.random.seed(seed)
+    set_RNG_seed(seed)
     all_results = []
 
     for j in range(num_sim):

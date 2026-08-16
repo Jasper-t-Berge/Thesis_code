@@ -71,10 +71,13 @@ compare_optimizers/           which optimiser is best
   solver_adam.py
   solver_cma.py
   solver_bayesian.py
-  run_comparison.py           runs all four and plots the comparison
+  run_comparison.py           runs every solver and plots the comparison
 
 topology_sweep/               which topology supports what
   run_heatmap.py              sweeps topology x t-graph, draws the heatmap
+
+tests/
+  test_smoke.py               regression suite, no test framework needed
 ```
 
 The Update section adds three more files to `compare_optimizers/`.
@@ -91,7 +94,8 @@ all cases and makes the three directly comparable.
 pip install -r requirements.txt
 ```
 
-Python 3.9+, and `numpy`, `matplotlib`, `networkx` and `cma` (pycma).
+Python 3.9+, and `numpy`, `matplotlib`, `networkx`, `cma` (pycma) and `scipy`.
+`scipy` is used only by the hybrid solver, for its linear program.
 
 Nothing else is needed. Every script puts the project root on `sys.path`
 itself, so the files run directly from an IDE's run button or the command
@@ -125,20 +129,37 @@ python compare_optimizers/solver_cma.py
 ```
 
 The full optimiser benchmark. The default is 1000 trials per method, which
-takes a few hours; edit the `compare(num_trials=...)` call at the bottom of the
-file for a quicker look:
+takes the better part of a day — about 45 seconds per seed across the five
+methods, over half of it the TPE solver building its surrogate. Edit the
+`compare(num_trials=...)` call at the bottom of the file for a quicker look:
 
 ```bash
 python compare_optimizers/run_comparison.py
 ```
 
-The topology sweep, 1000 trials per cell across 9 cells:
+The topology sweep, 1000 trials per cell across 9 cells, at 1000 evaluations
+per trial. About an hour:
 
 ```bash
 python topology_sweep/run_heatmap.py
 ```
 
 Both runners save their figures as PNG files in the working directory.
+
+### Tests
+
+A regression suite covering the library, all five solvers and the scaling
+machinery. It needs no test framework, and takes a couple of minutes:
+
+```bash
+python tests/test_smoke.py
+```
+
+It checks that every script imports, that each solver honours the result
+contract below and is reproducible under a fixed seed, and that a solved
+network really does reproduce its target t-graph. The solvers run on
+deliberately small budgets there, so a solver that fails to *converge* is not
+a test failure — only one that fails to *run* is.
 
 ## Picking this up for the first time
 

@@ -15,9 +15,6 @@ import numpy as np
 
 from . import config
 
-# Read once at import; see config.py for what this flag does.
-symmetric_flag = config.symmetric_flag
-
 
 class HysteronValve:
     """
@@ -213,7 +210,9 @@ def calculate_pressure_hysteron_and_conductor_network(
     pressure_nodes = np.concatenate((boundary_pressure, internal_pressure))
     pressure_edges = incidence_matrix @ pressure_nodes
 
-    if symmetric_flag:
+    # Read through `config` on every call rather than captured at import, so
+    # setting `config.symmetric_flag` at runtime actually takes effect.
+    if config.symmetric_flag:
         pressure_edges = np.abs(pressure_edges)
 
     return pressure_edges

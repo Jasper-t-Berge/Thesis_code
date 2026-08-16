@@ -206,14 +206,20 @@ def find_t_graph_with_thresholds(valves, conds, boundary_pressure_template,
                 valves, conds, boundary_pressure_template, incidence_matrix,
                 state_int)
 
-        # Queue up any newly discovered states. Unfilled rows hold -1, which
-        # is also the "no transition" marker, so dead ends are never queued.
-        if t_graph[fill_index, 1] not in t_graph[:, 0]:
-            t_graph[N_fill] = t_graph[fill_index, 1]
-            N_fill += 1
-        if t_graph[fill_index, 2] not in t_graph[:, 0]:
-            t_graph[N_fill] = t_graph[fill_index, 2]
-            N_fill += 1
+        # Queue up any newly discovered states. -1 is the "no transition"
+        # marker, so dead ends are skipped explicitly rather than relying on a
+        # -1 still being present among the unfilled rows of column 0: once
+        # every state has been discovered there are no unfilled rows left, and
+        # a dead end would otherwise be queued as if it were a new state.
+        for column in (1, 2):
+            successor = t_graph[fill_index, column]
+            if successor == -1 or N_fill >= max_states:
+                continue
+            if successor not in t_graph[:N_fill, 0]:
+                # Only column 0 carries a meaning here; the remaining columns
+                # are filled in when this row is itself processed.
+                t_graph[N_fill, 0] = successor
+                N_fill += 1
 
         fill_index += 1
         if fill_index >= N_fill:

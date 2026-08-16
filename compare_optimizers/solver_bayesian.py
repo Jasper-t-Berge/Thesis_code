@@ -33,7 +33,6 @@ is worth judging on wall-clock time and not only on evaluation count.
 
 import pathlib
 import sys
-import time
 import warnings
 
 # Put the project root and this folder on the import path, so `hysteron` and
@@ -49,6 +48,7 @@ from hysteron import (                                        # noqa: E402
     HysteronValve,
     cost_function_system,
     give_kick,
+    set_RNG_seed,
     straighten_parameters,
 )
 
@@ -233,8 +233,7 @@ def run(seed, num_steps=problem.EVAL_BUDGET, num_sim=1,
     `params` is the best parameter vector found, which is the actual answer
     to the design problem; the rest describe how the search got there.
     """
-    np.random.seed(seed if seed != -1
-                   else int(time.time() * 10000) % 100000000)
+    set_RNG_seed(seed)
 
     all_results = []
 

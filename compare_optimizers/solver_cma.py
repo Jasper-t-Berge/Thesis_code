@@ -20,7 +20,6 @@ without improvement.
 
 import pathlib
 import sys
-import time
 
 # Put the project root and this folder on the import path, so `hysteron` and
 # the sibling modules resolve however this file is launched.
@@ -35,11 +34,13 @@ from hysteron import (                                        # noqa: E402
     HysteronValve,
     cost_function_system,
     random_parameter_vector,
+    set_RNG_seed,
     straighten_parameters,
 )
 from hysteron.optimize import (                               # noqa: E402
-    MU,
-    POPSIZE,
+    # POPSIZE is re-exported deliberately: `run_comparison` and `run_scaling`
+    # read it off this module to convert generations into cost evaluations.
+    POPSIZE,                                                  # noqa: F401
     SIGMA0,
     SIGMA_FLOOR,
     STAGNATION_LIMIT,
@@ -100,12 +101,7 @@ def run(seed, max_fevals=problem.EVAL_BUDGET, num_sim=1, sigma0=SIGMA0,
     to the design problem; the rest describe how the search got there. It is
     a raw candidate, so pass it through `reconstruct_valves_conds` before use.
     """
-    # numpy rejects a negative seed, so translate the -1 convention used by
-    # the other solvers into a clock-derived seed here.
-    if seed == -1:
-        seed = int(time.time() * 10000) % 100000000
-        print('seed:', seed, "\n")
-    np.random.seed(seed)
+    set_RNG_seed(seed)
     all_results = []
 
     for j in range(num_sim):
