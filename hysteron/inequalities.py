@@ -73,7 +73,10 @@ def inequalities_up_transition(N_hyst, n1, n2):
     """
     flipped_bits = _flipped_bits(N_hyst, n1, n2)
 
-    temp_ineq = np.zeros(shape=(4 * N_hyst * len(flipped_bits), 2, 3), dtype=int)
+    # int64 rather than plain `int`: states are packed bit patterns, so the
+    # all-closed state is 2**N_hyst - 1. numpy's default integer is int32 on
+    # Windows, which overflows at 31 valves; int64 raises that ceiling to 62.
+    temp_ineq = np.zeros(shape=(4 * N_hyst * len(flipped_bits), 2, 3), dtype=np.int64)
     state_arr = convert_number_to_state(n1, N_hyst)
     N_fill    = 0
 
@@ -135,7 +138,8 @@ def inequalities_down_transition(N_hyst, n1, n2):
     """
     flipped_bits = _flipped_bits(N_hyst, n1, n2)
 
-    temp_ineq = np.zeros(shape=(4 * N_hyst * len(flipped_bits), 2, 3), dtype=int)
+    # int64 for the same reason as in the up-transition above.
+    temp_ineq = np.zeros(shape=(4 * N_hyst * len(flipped_bits), 2, 3), dtype=np.int64)
     state_arr = convert_number_to_state(n1, N_hyst)
     N_fill    = 0
 

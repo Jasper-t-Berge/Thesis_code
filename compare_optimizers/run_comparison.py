@@ -1,5 +1,5 @@
 """
-Benchmark all four optimisers against each other.
+Benchmark all five optimisers against each other.
 
 Runs every method over the same set of seeds on the same problem, then plots
 three comparisons:
@@ -14,7 +14,10 @@ intervals behind them.
 Both speed measures are reported because neither is sufficient alone. The TPE
 solver spends real time building its surrogate between evaluations, so
 counting evaluations flatters it; wall-clock time captures that overhead but
-depends on the machine, so only large differences in it mean much.
+depends on the machine, so only large differences in it mean much. The same
+caveat applies with more force to the hybrid solver, whose every evaluation
+carries a linear program: on the evaluation axis it is being given a discount
+that only the wall-clock axis charges it for.
 
 Each solver exposes a `run(seed, ...)` that executes its complete optimisation
 loop, so what is benchmarked here is exactly what runs when a solver is
@@ -43,8 +46,9 @@ import solver_gradient_descent as gd_mod                      # noqa: E402
 import solver_adam             as adam_mod                    # noqa: E402
 import solver_cma              as cma_mod                     # noqa: E402
 import solver_bayesian         as bay_mod                     # noqa: E402
+import solver_hybrid           as hyb_mod                     # noqa: E402
 
-COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
 
 # --------------------------------------------------------------------------
 # Cost evaluations charged per recorded step, per method.
@@ -56,12 +60,16 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 #   Adam      18 for the gradient, matching GD
 #   CMA       one full population per generation
 #   Bayesian  one evaluation per step, by construction
+#   Hybrid    one population per generation, as CMA -- but each of those
+#             evaluations also solves a linear program, so the count
+#             understates the work done. See the note in the module docstring.
 # --------------------------------------------------------------------------
 EVALS_PER_STEP = {
     'GD':       1 + problem.N_params,
     'Adam':     1 + problem.N_params,
     'CMA':      cma_mod.POPSIZE,
     'Bayesian': 1,
+    'Hybrid':   hyb_mod.POPSIZE,
 }
 
 
@@ -72,6 +80,7 @@ def compare(num_trials=1000):
         'Adam':     lambda seed: adam_mod.run(seed, show_plot=False)[0],
         'CMA':      lambda seed: cma_mod.run(seed, show_plot=False)[0],
         'Bayesian': lambda seed: bay_mod.run(seed, show_plot=False)[0],
+        'Hybrid':   lambda seed: hyb_mod.run(seed, show_plot=False)[0],
     }
 
     results = {name: [] for name in methods}

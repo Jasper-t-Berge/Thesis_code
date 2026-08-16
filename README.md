@@ -1,7 +1,7 @@
 # Inverse Design of Fluidic Hysteron Networks
 
 Simulation and inverse-design code for networks of fluidic hysteron valves,
-and a comparison of four optimisation methods for solving the inverse design
+and a comparison of five optimisation methods for solving the inverse design
 problem they pose.
 
 ## Background
@@ -39,12 +39,15 @@ network produces the target behaviour, and grows smoothly with the size of the
 violations, so an optimiser can tell a nearly correct network from a badly
 wrong one.
 
-The repository answers two questions:
+The repository answers three questions:
 
-1. **Which optimiser solves this best?** Gradient descent, Adam, CMA-ES and
-   Bayesian TPE are benchmarked on a fixed topology and target.
+1. **Which optimiser solves this best?** Gradient descent, Adam, CMA-ES,
+   Bayesian TPE and a hybrid CMA-ES + linear-programming method are
+   benchmarked on a fixed topology and target.
 2. **Which topologies support which behaviours?** The best optimiser is then
    used to map three topologies against three target behaviours.
+3. **How does this scale?** The methods are swept over networks from 4 up to
+   60 valves, to see which of them survive the growth in dimension.
 
 ## Layout
 
@@ -65,7 +68,10 @@ compare_optimizers/           which optimiser is best
   solver_adam.py
   solver_cma.py
   solver_bayesian.py
-  run_comparison.py           runs all four and plots the comparison
+  solver_hybrid.py            CMA-ES over conductances, LP over thresholds
+  run_comparison.py           runs all five and plots the comparison
+  scaled_problem.py           a Wheatstone ladder at any size, for scaling runs
+  run_scaling.py              sweeps the network size, 4 to 60 valves
 
 topology_sweep/               which topology supports what
   run_heatmap.py              sweeps topology x t-graph, draws the heatmap
@@ -76,6 +82,75 @@ t-graphs (`Preisach`, `Avalanche`, `MPO`) are defined in `initialize_geometry`
 and `initialize_tgraph`. Every topology uses 4 hysteron valves plus one fixed
 conductor as its 5th edge, which keeps the search space at 17 dimensions in
 all cases and makes the three directly comparable.
+
+## The hybrid solver
+
+Four of the five methods treat all 17 parameters as one opaque search space.
+Half of that space does not need to be searched at all.
+
+Every design inequality compares two switching thresholds, and a threshold is
+
+```
+T(i, s) = h_i(s) / dP(i, s)
+```
+
+where `h_i(s)` is one of valve *i*'s two intrinsic pressures and `dP(i, s)` is
+the fraction of the source pressure dropped across edge *i* in state *s*. The
+pressure drop falls out of the Kirchhoff solve, whose only inputs are the
+conductances and the state — the threshold parameters never enter it.
+
+So fix the 9 conductances and every threshold becomes a known constant times
+one of the 8 remaining unknowns. Each cost term `max(0, T_a - T_b + eps)` is
+then a hinge on a linear function of those unknowns, the total cost is convex
+and piecewise linear in them, and its exact minimum is the optimum of a small
+linear program. CMA-ES is left searching only conductance space — 9 dimensions
+instead of 17 — and for each candidate the LP returns the best cost achievable
+over *all* thresholds.
+
+The LP is the epigraph form of the cost, solved with HiGHS:
+
+```
+minimise    sum_k slack_k
+subject to  c_small,k * h_small,k - c_large,k * h_large,k + eps <= slack_k
+            h+_i - h-_i >= 0.1
+            slack_k >= 0,  h-_i >= 0.05
+```
+
+Its feasible box is exactly the region `straighten_parameters` projects into,
+so the hybrid is allowed no thresholds the other solvers are denied.
+
+### Results
+
+Ten seeds on the Wheatstone/MPO benchmark, 10,000 evaluations each. Medians
+are over successful runs. Every success was re-verified by rebuilding the
+network from the returned parameters and re-scoring it:
+
+| method   | success | evaluations | wall-clock |
+|----------|---------|-------------|------------|
+| GD       | 0/10    | —           | —          |
+| Adam     | 9/10    | 1782        | 0.95 s     |
+| CMA      | 8/10    | 432         | 0.34 s     |
+| Bayesian | 10/10   | 1490        | 19.47 s    |
+| Hybrid   | 9/10    | **24**      | **0.03 s** |
+
+Ten trials is enough to see the shape and not enough to separate 8/10 from
+9/10; use `compare(num_trials=1000)` for numbers worth quoting.
+
+Two caveats on reading that table. A hybrid evaluation costs about 3.9x a
+plain one, because it solves an LP on top of the same pressure solves, so the
+evaluation column flatters it and only the wall-clock column prices it
+honestly — though it wins on both. And the LP separates thresholds by 1e-5
+rather than `config.EPSILON`'s 1e-9, because 1e-9 sits below HiGHS's own
+feasibility tolerance and would let it call a constraint satisfied when it was
+not. The coarser margin errs only towards rejecting marginal solutions, never
+towards accepting broken ones, and costs nothing because the cost is
+homogeneous in the thresholds.
+
+The more interesting result is a by-product: **about 63% of purely random
+conductance vectors already solve the benchmark** once the LP picks thresholds
+optimally, which is why the median is two generations. The difficulty in this
+problem was almost entirely in the threshold parameters rather than the
+conductances.
 
 ## Installation
 
@@ -132,6 +207,18 @@ python topology_sweep/run_heatmap.py
 
 Both runners save their figures as PNG files in the working directory.
 
+The scaling sweep, which runs Adam, CMA and the hybrid over a Wheatstone
+ladder of increasing size. The arguments are the ladder sizes (each cell is 4
+valves), the seeds per size, the pulses used to build the target, and the
+evaluation budget:
+
+```bash
+python compare_optimizers/run_scaling.py 1,2,4,8 10 40 10000
+```
+
+It prints a row per size and method as each finishes. The larger sizes are
+slow — 32 valves is roughly half an hour per method — so start with `1,2`.
+
 ## Picking this up for the first time
 
 Suggested reading order. It follows the physics rather than the file listing:
@@ -163,11 +250,22 @@ Add a branch to `initialize_tgraph` in `hysteron/tgraph.py`, listing the
 up- and down-transitions that define it. Only the transitions you care about
 need listing; the optimiser fills in the rest however it likes.
 
-One limitation to know about: the inequality generator assumes up-transitions
-only ever close valves and down-transitions only ever open them. All three
-existing targets satisfy that. A target that mixes directions within a single
-transition will generate wrong constraints, not an error, so check yours
-before trusting a result.
+Two limitations to know about.
+
+The inequality generator assumes up-transitions only ever close valves and
+down-transitions only ever open them. All three existing targets satisfy that.
+A target that mixes directions within a single transition will generate wrong
+constraints, not an error, so check yours before trusting a result.
+
+It is also **stricter than the physics for cascades**. For a multi-flip
+transition, `inequalities_up_transition` loops over every flipped bit as the
+critical one and demands each of them be the first to flip out of the initial
+state. Physically only one valve triggers and the rest follow, so a network
+that genuinely produces the avalanche still scores a nonzero cost on its own
+recorded behaviour. `Preisach` and `MPO` are entirely single-flip and never hit
+this; `Avalanche`'s `3 -> 15` does. The cheap check on any new target is to
+draw a random network, read its behaviour back off with the forward solver, and
+confirm it scores zero on the target it just produced.
 
 ### Adding a new optimiser
 
@@ -192,10 +290,15 @@ Directions the project could be taken next:
   constraining the valves that stay put, in the intermediate state the cascade
   passes through, would tighten the avalanche and MPO targets. Worth checking
   what it does to their success rates.
-- **Larger networks.** Everything here is built around 4 valves and 1
-  conductor. Scaling up mainly means revisiting the pressure solve, where
-  `np.linalg.solve` would be better conditioned than the explicit inverse used
-  now, and the t-graph explorer, which enumerates all 2^N states.
+- **Larger networks.** `compare_optimizers/scaled_problem.py` now reaches 60
+  valves, but three things still bound it. States are packed bit patterns
+  stored in numpy integer arrays, so the all-closed state `2**N - 1` overflows;
+  `inequalities.py` uses `int64`, which caps the system at 62 valves, and going
+  past that means replacing the packed-integer encoding outright. The pressure
+  solve still uses an explicit `np.linalg.inv` where `np.linalg.solve` would be
+  better conditioned. And the t-graph explorer enumerates all `2**N` states, so
+  it is unusable above about 20 valves — the scaling code sidesteps it by
+  following a pressure sweep instead, which visits only O(N) states.
 - **Explicit random generators.** Randomness currently runs through numpy's
   global state. Threading `numpy.random.Generator` objects through instead
   would make each component's stream independent, which matters as soon as
@@ -203,6 +306,23 @@ Directions the project could be taken next:
 - **Topologies beyond the three here.** The sweep framework takes any topology
   and any target, so extending either list is mostly a matter of writing down
   the edges or the transitions.
+
+## Known issues
+
+**`cma_search` can report a success it did not return.** In
+`hysteron/optimize.py`, `raw_cost_list[0]` records the cost of the starting
+point, but `best_cost_overall` is initialised to `np.inf` rather than to that
+value. `cost_arr` is a running minimum, so a zero-cost starting point leaves a
+zero in it permanently, while generation 1 always beats `inf` and overwrites
+`best_params` with a worse point. The returned `success` and `best_cost` both
+read `cost_arr[-1]`, so they can disagree with `best_params`. The tell-tale is
+`success=True` with `completion_index == -1` and the full budget spent. It
+affects CMA and the hybrid, which share the search.
+
+Until it is fixed — initialising `best_cost_overall` to `raw_cost_list[0]` is
+enough — treat a reported success as a claim to be checked rather than a fact.
+Rebuilding the network from `params` and re-scoring it with
+`cost_function_system` is the check; `run_scaling.py` does it on every run.
 
 ## License
 
