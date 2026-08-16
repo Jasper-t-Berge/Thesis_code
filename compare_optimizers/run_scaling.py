@@ -32,6 +32,17 @@ Usage:
     python compare_optimizers/run_scaling.py [cells] [seeds] [pulses] [budget]
 
 `cells` is a comma-separated list of ladder sizes k, each giving 4k valves.
+
+The larger sizes are slow -- at 32 valves a single cost evaluation solves 77
+small linear systems and walks 5146 inequalities, and each method spends
+100,000 of them, so budget about 45 minutes per method. Pin the BLAS thread
+count before starting:
+
+    OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python compare_optimizers/run_scaling.py ...
+
+The matrices here are far too small to parallelise -- 23x23 at 32 valves -- so
+letting BLAS spread them over every core spends more time coordinating threads
+than solving, and pinning it to one roughly halves the wall-clock.
 """
 
 import pathlib
