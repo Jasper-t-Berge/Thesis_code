@@ -96,8 +96,16 @@ def cma_search(cost_fn, x0_fn, max_fevals,
         fevals            cost evaluations actually spent
     """
     best_params       = x0_fn()
-    best_cost_overall = np.inf
     raw_cost_list     = [cost_fn(best_params)]
+    # Seeded with the starting point's own cost, not with infinity. `cost_arr`
+    # is a running minimum that already includes this value, and `success` and
+    # `best_cost` are both read off it -- so if this were left at infinity, the
+    # first generation would beat it unconditionally and overwrite
+    # `best_params` with a worse point. A run that started on a solution would
+    # then report a cost of zero while handing back parameters that do not
+    # achieve it. Starting from the real cost keeps the returned parameters and
+    # the returned cost describing the same network.
+    best_cost_overall = raw_cost_list[0]
     gens_no_improve   = 0
     num_restarts      = 0
     fevals            = 0

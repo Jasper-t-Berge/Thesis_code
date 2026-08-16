@@ -307,22 +307,31 @@ Directions the project could be taken next:
   and any target, so extending either list is mostly a matter of writing down
   the edges or the transitions.
 
-## Known issues
+## Verifying a result
 
-**`cma_search` can report a success it did not return.** In
-`hysteron/optimize.py`, `raw_cost_list[0]` records the cost of the starting
-point, but `best_cost_overall` is initialised to `np.inf` rather than to that
-value. `cost_arr` is a running minimum, so a zero-cost starting point leaves a
-zero in it permanently, while generation 1 always beats `inf` and overwrites
-`best_params` with a worse point. The returned `success` and `best_cost` both
-read `cost_arr[-1]`, so they can disagree with `best_params`. The tell-tale is
-`success=True` with `completion_index == -1` and the full budget spent. It
-affects CMA and the hybrid, which share the search.
+Two checks are worth making on anything a solver hands back, for two different
+reasons.
 
-Until it is fixed — initialising `best_cost_overall` to `raw_cost_list[0]` is
-enough — treat a reported success as a claim to be checked rather than a fact.
-Rebuilding the network from `params` and re-scoring it with
-`cost_function_system` is the check; `run_scaling.py` does it on every run.
+**The cost is only a proxy.** Zero cost means every design inequality holds,
+which is what the target t-graph was translated into — but the thing you
+actually want is the behaviour. Simulating the solved network and reading its
+t-graph back off is what confirms the behaviour is there. `demo.py` shows the
+pattern: solve, take `params`, then sweep the pressure over the result.
+
+**A reported cost belongs to a specific parameter vector.** `cma_search`
+guarantees that `best_cost` and `best_params` describe the same network, so
+re-scoring `params` with `cost_function_system` should reproduce the reported
+cost exactly. `run_scaling.py` does this on every claimed success, and it is
+cheap enough to be worth doing whenever a number is going into a write-up.
+
+That second guarantee has not always held. Until the fix in this branch,
+`best_cost_overall` was initialised to `np.inf` while `cost_arr` — a running
+minimum that `success` and `best_cost` are both read off — already contained
+the starting point's cost. A run that began on a solution therefore reported
+zero while generation 1 quietly overwrote `best_params` with a worse point.
+Results generated before the fix can report a cost their parameters do not
+achieve; the tell-tale is `success=True` with `completion_index == -1` and the
+full evaluation budget spent. Re-scoring `params` catches it.
 
 ## License
 
