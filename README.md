@@ -161,6 +161,77 @@ network really does reproduce its target t-graph. The solvers run on
 deliberately small budgets there, so a solver that fails to *converge* is not
 a test failure — only one that fails to *run* is.
 
+## Results
+
+Both experiments below run 1000 trials. The optimiser benchmark gives each
+method 10,000 cost evaluations per trial on the same 1000 seeds; the topology
+sweep gives CMA-ES 1000 evaluations per trial.
+
+### Which optimiser solves this best?
+
+On the Wheatstone topology with the MPO target, over 1000 seeds per method:
+
+| method       | success rate | median evals (successful) | median wall-clock |
+|--------------|--------------|---------------------------|-------------------|
+| Gradient descent | 1.4%     | 8,541                     | 2.61 s            |
+| Adam             | 84.3%    | 1,206                     | 0.39 s            |
+| CMA-ES           | 83.5%    | **288**                   | **0.15 s**        |
+| Bayesian TPE     | **99.7%**| 1,056                     | 7.05 s            |
+
+Three things stand out.
+
+TPE finds a solution almost every time, but pays for it: its surrogate model
+costs O(n · n_candidates) per iteration and grows with every evaluation, making
+it roughly 40x slower than CMA-ES in wall-clock terms. It is built for problems
+where the cost function itself is expensive, which this one is not.
+
+Adam and CMA-ES are indistinguishable on success rate — a two-sided Fisher
+exact test gives p = 0.68 — despite being fundamentally different methods, one
+gradient-based and local, the other population-based and global. They plausibly
+stall on the same features of the cost landscape.
+
+They separate clearly on efficiency: CMA-ES needs 3-4x fewer evaluations than
+Adam, and fewer even than the evaluation-frugal TPE. It also converges the
+fastest in wall-clock time. That combination is why CMA-ES is the optimiser used
+for the topology sweep below.
+
+Plain gradient descent is the worst method on almost every metric, exhausting
+its full budget on roughly 99% of seeds.
+
+Wall-clock timings are hardware-dependent and should not be compared across
+systems. The large gaps (TPE vs the rest) are meaningful; the small ones
+(among GD, Adam and CMA-ES) are within run-to-run variance.
+
+### Which topologies support which behaviours?
+
+CMA-ES, 1000 trials per cell at 1000 evaluations each. Success rate, with the
+mean evaluations to converge in brackets:
+
+| topology        | Preisach       | Avalanche      | MPO            |
+|-----------------|----------------|----------------|----------------|
+| series          | 100.0% (88)    | 0.0%           | 0.0%           |
+| series-parallel | 99.4% (88)     | 67.4% (236)    | 0.0%           |
+| wheatstone      | 99.0% (125)    | 47.3% (272)    | 79.2% (331)    |
+
+A clear hierarchy emerges, and it tracks the interactions each topology can
+host. Series networks couple only negatively, so valves switch independently
+and only Preisach behaviour is reachable. Series-parallel mixes negative and
+positive coupling, which is what cascading transitions need, and avalanches
+become available. Wheatstone's bridge produces dependencies that are not
+decomposable into either, and it is the only topology here that reaches MPO.
+
+Evaluation cost tracks difficulty: Preisach is consistently cheap (88-125
+evaluations), suggesting a large, well-conditioned solution region; avalanche
+costs 2.5-3x more; MPO on Wheatstone is the most expensive at 331.
+
+Two caveats on reading the zeros. Compatibility claims are specific to the
+exact t-graphs tested — a topology that cannot realise *this* MPO t-graph may
+well realise a different one. Read the table as evidence of what is possible,
+not proof of what is impossible. And the avalanche column is affected by the
+cascade limitation described in the Update section: the inequality generator
+over-constrains multi-flip transitions, so those success rates are lower
+bounds.
+
 ## Picking this up for the first time
 
 Suggested reading order. It follows the physics rather than the file listing:
